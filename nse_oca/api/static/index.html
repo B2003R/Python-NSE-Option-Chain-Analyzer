@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NSE OCA Control Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="bg-layer bg-layer-one"></div>
+  <div class="bg-layer bg-layer-two"></div>
+
+  <main class="layout">
+    <header class="hero">
+      <p class="eyebrow">NSE Option Chain Analyzer</p>
+      <h1>Server Control Center</h1>
+      <p class="subtitle">Set mode, symbol, expiry date, and strike to open the analyzer results dashboard.</p>
+    </header>
+
+    <div id="messageBox" class="message hidden"></div>
+
+    <section id="configView" class="view">
+      <section class="card controls-card">
+        <h2>Run Configuration</h2>
+        <form id="controlForm" class="controls-grid">
+          <label>
+            Mode
+            <select id="modeSelect" name="mode">
+              <option value="Index">Index</option>
+              <option value="Stock">Stock</option>
+            </select>
+          </label>
+
+          <label>
+            Symbol
+            <select id="symbolSelect" name="symbol"></select>
+          </label>
+
+          <label>
+            Expiry Date
+            <select id="expirySelect" name="expiry_date"></select>
+          </label>
+
+          <label>
+            Strike Price
+            <input id="strikeInput" name="strike_price" type="number" min="1" step="1" value="24000" required>
+          </label>
+
+          <label>
+            Interval (seconds)
+            <select id="intervalSelect" name="interval_seconds">
+              <option value="60">60</option>
+              <option value="120">120</option>
+              <option value="180">180</option>
+              <option value="300">300</option>
+              <option value="600">600</option>
+              <option value="900">900</option>
+            </select>
+          </label>
+
+          <label class="checkbox-label">
+            <input id="persistCheck" name="persist" type="checkbox" checked>
+            Persist snapshots to DB
+          </label>
+        </form>
+
+        <div class="actions-grid config-actions-grid">
+          <button id="loadSymbolsBtn" class="btn btn-secondary" type="button">Load Symbols</button>
+          <button id="loadExpiriesBtn" class="btn btn-secondary" type="button">Load Expiries</button>
+          <button id="openResultsBtn" class="btn btn-primary" type="button">Open Results View</button>
+        </div>
+      </section>
+    </section>
+
+    <section id="resultsView" class="view hidden">
+      <section class="card results-toolbar">
+        <div class="results-head">
+          <div>
+            <p class="eyebrow">Analyzer Workspace</p>
+            <h2>Option Chain Results</h2>
+            <p id="resultsContext" class="context-line">-</p>
+          </div>
+          <div class="status-pills">
+            <span class="pill"><strong>Running:</strong> <span id="statusRunning">-</span></span>
+            <span class="pill"><strong>Next:</strong> <span id="statusNextRun">-</span></span>
+            <span class="pill"><strong>Last:</strong> <span id="statusLastRun">-</span></span>
+            <span class="pill"><strong>Runs:</strong> <span id="statusRuns">0</span></span>
+          </div>
+        </div>
+        <p class="status-error-line">Last Error: <span id="statusError">-</span></p>
+
+        <div class="actions-grid results-actions-grid">
+          <button id="backBtn" class="btn btn-secondary" type="button">Back</button>
+          <button id="refreshBtn" class="btn btn-secondary" type="button">Refresh</button>
+          <button id="analyzeBtn" class="btn btn-primary" type="button">Analyze Once</button>
+          <button id="startBtn" class="btn btn-accent" type="button">Start Scheduled Run</button>
+          <button id="stopBtn" class="btn btn-danger" type="button">Stop Run</button>
+          <button id="triggerBtn" class="btn btn-secondary" type="button">Trigger Immediate Cycle</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Latest Snapshot</h2>
+        <div class="table-wrap analyzer-table-wrap">
+          <table class="analyzer-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Value</th>
+                <th>Call Sum (in K)</th>
+                <th>Put Sum (in K)</th>
+                <th>Difference (in K)</th>
+                <th>Call Boundary (in K)</th>
+                <th>Put Boundary (in K)</th>
+                <th>Call ITM</th>
+                <th>Put ITM</th>
+              </tr>
+            </thead>
+            <tbody id="summaryBody">
+              <tr>
+                <td colspan="9" class="placeholder">No snapshot data yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="boundary-grid">
+        <article class="card boundary-card">
+          <h2>Open Interest Upper Boundary</h2>
+          <div class="table-wrap">
+            <table class="boundary-table">
+              <tbody>
+                <tr>
+                  <th>Strike Price 1:</th>
+                  <td id="upperStrikeOne">-</td>
+                  <th>OI (in K):</th>
+                  <td id="upperOiOne">-</td>
+                </tr>
+                <tr>
+                  <th>Strike Price 2:</th>
+                  <td id="upperStrikeTwo">-</td>
+                  <th>OI (in K):</th>
+                  <td id="upperOiTwo">-</td>
+                </tr>
+                <tr class="signal-row">
+                  <th>Open Interest:</th>
+                  <td id="signalOi" class="signal-cell" colspan="3">-</td>
+                </tr>
+                <tr class="signal-row">
+                  <th>Call Exits:</th>
+                  <td id="signalCallExits" class="signal-cell" colspan="3">-</td>
+                </tr>
+                <tr class="signal-row">
+                  <th>Call ITM:</th>
+                  <td id="signalCallItm" class="signal-cell" colspan="3">-</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card boundary-card">
+          <h2>Open Interest Lower Boundary</h2>
+          <div class="table-wrap">
+            <table class="boundary-table">
+              <tbody>
+                <tr>
+                  <th>Strike Price 1:</th>
+                  <td id="lowerStrikeOne">-</td>
+                  <th>OI (in K):</th>
+                  <td id="lowerOiOne">-</td>
+                </tr>
+                <tr>
+                  <th>Strike Price 2:</th>
+                  <td id="lowerStrikeTwo">-</td>
+                  <th>OI (in K):</th>
+                  <td id="lowerOiTwo">-</td>
+                </tr>
+                <tr class="signal-row">
+                  <th>PCR:</th>
+                  <td id="signalPcr" class="signal-cell" colspan="3">-</td>
+                </tr>
+                <tr class="signal-row">
+                  <th>Put Exits:</th>
+                  <td id="signalPutExits" class="signal-cell" colspan="3">-</td>
+                </tr>
+                <tr class="signal-row">
+                  <th>Put ITM:</th>
+                  <td id="signalPutItm" class="signal-cell" colspan="3">-</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
