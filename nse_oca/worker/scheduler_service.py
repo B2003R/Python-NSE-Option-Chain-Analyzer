@@ -40,6 +40,7 @@ class AnalysisScheduler:
         self.scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
         self.lock = Lock()
         self.current_config: Optional[ScheduledRunConfig] = None
+        self.run_started_at: Optional[datetime] = None
         self.last_run_at: Optional[datetime] = None
         self.last_error: Optional[str] = None
         self.total_runs: int = 0
@@ -58,6 +59,8 @@ class AnalysisScheduler:
 
         with self.lock:
             self.current_config = config
+            # Keep second-level precision so DB timestamps from SQLite compare reliably.
+            self.run_started_at = datetime.now(tz=timezone.utc).replace(microsecond=0)
             self.last_error = None
 
         self.scheduler.add_job(
@@ -67,11 +70,15 @@ class AnalysisScheduler:
             replace_existing=True,
         )
 
+        # Run one cycle immediately so users see the live session start without waiting a full interval.
+        self._execute_job()
+
         return self.status()
 
     def stop_run(self) -> Dict[str, Any]:
         with self.lock:
             self.current_config = None
+            self.run_started_at = None
 
         if self.scheduler.get_job(self.JOB_ID):
             self.scheduler.remove_job(self.JOB_ID)
@@ -85,6 +92,7 @@ class AnalysisScheduler:
     def status(self) -> Dict[str, Any]:
         with self.lock:
             config = self.current_config
+            run_started_at = self.run_started_at.isoformat() if self.run_started_at else None
             last_run_at = self.last_run_at.isoformat() if self.last_run_at else None
             last_error = self.last_error
             total_runs = self.total_runs
@@ -95,6 +103,7 @@ class AnalysisScheduler:
         return {
             "running": job is not None,
             "next_run_at": next_run_at,
+            "run_started_at": run_started_at,
             "last_run_at": last_run_at,
             "last_error": last_error,
             "total_runs": total_runs,

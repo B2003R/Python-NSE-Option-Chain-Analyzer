@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, RedirectResponse
@@ -179,7 +180,7 @@ def latest_snapshot(
     symbol: str = Query(min_length=1),
     expiry_date: str = Query(min_length=1),
     strike_price: int = Query(gt=0),
-) -> Dict[str, Any]:
+) -> Optional[Dict[str, Any]]:
     with get_session() as session:
         snapshot_repository = SnapshotRepository(session)
         snapshot = snapshot_repository.get_latest(
@@ -188,10 +189,6 @@ def latest_snapshot(
             expiry_date=expiry_date,
             strike_price=strike_price,
         )
-
-    if snapshot is None:
-        raise HTTPException(status_code=404, detail="No snapshot found for requested identity")
-
     return snapshot
 
 
@@ -201,8 +198,17 @@ def history_snapshots(
     symbol: str = Query(min_length=1),
     expiry_date: str = Query(min_length=1),
     strike_price: int = Query(gt=0),
-    limit: int = Query(default=100, ge=1, le=500),
+    since_created_at: Optional[str] = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
 ) -> Dict[str, Any]:
+    since_dt: Optional[datetime] = None
+    if since_created_at:
+        try:
+            normalized = since_created_at.replace("Z", "+00:00")
+            since_dt = datetime.fromisoformat(normalized)
+        except ValueError as err:
+            raise HTTPException(status_code=422, detail="since_created_at must be an ISO-8601 datetime") from err
+
     with get_session() as session:
         snapshot_repository = SnapshotRepository(session)
         history = snapshot_repository.get_history(
@@ -210,6 +216,7 @@ def history_snapshots(
             symbol=symbol,
             expiry_date=expiry_date,
             strike_price=strike_price,
+            since_created_at=since_dt,
             limit=limit,
         )
 

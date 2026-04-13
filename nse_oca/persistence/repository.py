@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import desc, select
@@ -149,19 +150,20 @@ class SnapshotRepository:
         symbol: str,
         expiry_date: str,
         strike_price: int,
+        since_created_at: Optional[datetime] = None,
         limit: int = 100,
     ) -> List[Dict[str, Any]]:
-        statement = (
-            select(AnalysisSnapshotORM)
-            .where(
-                AnalysisSnapshotORM.mode == mode,
-                AnalysisSnapshotORM.symbol == symbol,
-                AnalysisSnapshotORM.expiry_date == expiry_date,
-                AnalysisSnapshotORM.strike_price == strike_price,
-            )
-            .order_by(desc(AnalysisSnapshotORM.created_at))
-            .limit(limit)
+        statement = select(AnalysisSnapshotORM).where(
+            AnalysisSnapshotORM.mode == mode,
+            AnalysisSnapshotORM.symbol == symbol,
+            AnalysisSnapshotORM.expiry_date == expiry_date,
+            AnalysisSnapshotORM.strike_price == strike_price,
         )
+
+        if since_created_at is not None:
+            statement = statement.where(AnalysisSnapshotORM.created_at >= since_created_at)
+
+        statement = statement.order_by(desc(AnalysisSnapshotORM.created_at)).limit(limit)
         snapshots = self.session.execute(statement).scalars().all()
         return [_snapshot_to_dict(item) for item in snapshots]
 

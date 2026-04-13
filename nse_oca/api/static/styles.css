@@ -285,6 +285,10 @@ input {
   min-width: 980px;
 }
 
+.analyzer-table-wrap {
+  max-height: 430px;
+}
+
 .analyzer-table th,
 .analyzer-table td {
   text-align: center;
@@ -293,6 +297,28 @@ input {
 .analyzer-table td:first-child,
 .analyzer-table th:first-child {
   text-align: left;
+}
+
+.timeline-row-latest td:first-child {
+  box-shadow: inset 3px 0 0 var(--primary);
+  font-weight: 700;
+}
+
+.cell-trend-positive {
+  background: #00e676;
+  color: #102a1d;
+  font-weight: 700;
+}
+
+.cell-trend-negative {
+  background: #e53935;
+  color: #fff;
+  font-weight: 700;
+}
+
+.cell-trend-neutral {
+  background: #f4f1eb;
+  color: #5f5d59;
 }
 
 .boundary-grid {
@@ -348,8 +374,8 @@ input {
 }
 
 .signal-negative {
-  background: #f5dfdf !important;
-  color: #7e2525;
+  background: #e53935 !important;
+  color: #fff;
 }
 
 .signal-neutral {

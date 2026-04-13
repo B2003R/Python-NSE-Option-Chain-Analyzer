@@ -17,7 +17,7 @@
     <header class="hero">
       <p class="eyebrow">NSE Option Chain Analyzer</p>
       <h1>Server Control Center</h1>
-      <p class="subtitle">Set mode, symbol, expiry date, and strike to open the analyzer results dashboard.</p>
+      <p class="subtitle">Set mode, symbol, expiry date, strike, and interval to start a live session timeline.</p>
     </header>
 
     <div id="messageBox" class="message hidden"></div>
@@ -70,7 +70,7 @@
         <div class="actions-grid config-actions-grid">
           <button id="loadSymbolsBtn" class="btn btn-secondary" type="button">Load Symbols</button>
           <button id="loadExpiriesBtn" class="btn btn-secondary" type="button">Load Expiries</button>
-          <button id="openResultsBtn" class="btn btn-primary" type="button">Open Results View</button>
+          <button id="openResultsBtn" class="btn btn-primary" type="button">Start Live Session</button>
         </div>
       </section>
     </section>
@@ -79,8 +79,7 @@
       <section class="card results-toolbar">
         <div class="results-head">
           <div>
-            <p class="eyebrow">Analyzer Workspace</p>
-            <h2>Option Chain Results</h2>
+            <h2>Live Session Dashboard</h2>
             <p id="resultsContext" class="context-line">-</p>
           </div>
           <div class="status-pills">
@@ -95,15 +94,12 @@
         <div class="actions-grid results-actions-grid">
           <button id="backBtn" class="btn btn-secondary" type="button">Back</button>
           <button id="refreshBtn" class="btn btn-secondary" type="button">Refresh</button>
-          <button id="analyzeBtn" class="btn btn-primary" type="button">Analyze Once</button>
-          <button id="startBtn" class="btn btn-accent" type="button">Start Scheduled Run</button>
           <button id="stopBtn" class="btn btn-danger" type="button">Stop Run</button>
-          <button id="triggerBtn" class="btn btn-secondary" type="button">Trigger Immediate Cycle</button>
         </div>
       </section>
 
       <section class="card">
-        <h2>Latest Snapshot</h2>
+        <h2>Session Snapshots</h2>
         <div class="table-wrap analyzer-table-wrap">
           <table class="analyzer-table">
             <thead>
@@ -121,7 +117,7 @@
             </thead>
             <tbody id="summaryBody">
               <tr>
-                <td colspan="9" class="placeholder">No snapshot data yet.</td>
+                <td colspan="9" class="placeholder">No snapshots in this session yet.</td>
               </tr>
             </tbody>
           </table>

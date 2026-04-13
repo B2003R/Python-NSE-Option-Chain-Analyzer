@@ -14,10 +14,7 @@ const openResultsBtn = document.getElementById("openResultsBtn");
 
 const backBtn = document.getElementById("backBtn");
 const refreshBtn = document.getElementById("refreshBtn");
-const analyzeBtn = document.getElementById("analyzeBtn");
-const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
-const triggerBtn = document.getElementById("triggerBtn");
 
 const messageBox = document.getElementById("messageBox");
 const resultsContext = document.getElementById("resultsContext");
@@ -47,10 +44,15 @@ const signalPutExits = document.getElementById("signalPutExits");
 const signalCallItm = document.getElementById("signalCallItm");
 const signalPutItm = document.getElementById("signalPutItm");
 
+const SNAPSHOT_ROW_LIMIT = 200;
+
 const state = {
   symbols: { indices: [], stocks: [] },
   pollId: null,
+  pollDelayMs: 9000,
   latestSnapshot: null,
+  sessionSnapshots: [],
+  activeRunStartedAt: null,
 };
 
 function showMessage(text, type = "info") {
@@ -140,7 +142,12 @@ function snapshotQueryString() {
     symbol: payload.symbol,
     expiry_date: payload.expiry_date,
     strike_price: String(payload.strike_price),
+    limit: String(SNAPSHOT_ROW_LIMIT),
   });
+
+  if (state.activeRunStartedAt) {
+    params.set("since_created_at", state.activeRunStartedAt);
+  }
 
   return params.toString();
 }
@@ -161,6 +168,8 @@ function normalizeSnapshot(raw) {
   }
 
   return {
+    id: raw.id,
+    created_at: raw.created_at || null,
     server_timestamp: raw.server_timestamp || raw.timestamp || null,
     underlying_value: toNumber(raw.underlying_value),
     call_sum: toNumber(raw.call_sum),
@@ -213,7 +222,7 @@ function syncResultsContext() {
     return;
   }
 
-  resultsContext.textContent = `${payload.mode} | ${payload.symbol} | ${payload.expiry_date} | Strike ${payload.strike_price}`;
+  resultsContext.textContent = `${payload.mode} | ${payload.symbol} | ${payload.expiry_date} | Strike ${payload.strike_price} | ${payload.interval_seconds}s`;
 }
 
 function setText(node, value) {
@@ -252,18 +261,24 @@ function setSignalClass(node, kind, value) {
     return;
   }
 
-  if (normalized === "yes") {
-    node.classList.add("signal-positive");
-  } else if (normalized === "no") {
-    node.classList.add("signal-negative");
-  } else {
-    node.classList.add("signal-neutral");
+  if (kind === "call-yes") {
+    node.classList.add(normalized === "yes" ? "signal-positive" : "signal-neutral");
+    return;
   }
+
+  if (kind === "put-yes") {
+    node.classList.add(normalized === "yes" ? "signal-negative" : "signal-neutral");
+    return;
+  }
+
+  node.classList.add("signal-neutral");
 }
 
-function clearSnapshotView() {
-  summaryBody.innerHTML = '<tr><td colspan="9" class="placeholder">No snapshot data yet.</td></tr>';
+function clearTimelineTable() {
+  summaryBody.innerHTML = '<tr><td colspan="9" class="placeholder">No snapshots in this session yet.</td></tr>';
+}
 
+function clearBoundaryPanels() {
   setText(upperStrikeOne, "-");
   setText(upperOiOne, "-");
   setText(upperStrikeTwo, "-");
@@ -282,36 +297,61 @@ function clearSnapshotView() {
 
   setSignalClass(signalOi, "oi", null);
   setSignalClass(signalPcr, "pcr", null);
-  setSignalClass(signalCallExits, "yes-no", null);
-  setSignalClass(signalPutExits, "yes-no", null);
-  setSignalClass(signalCallItm, "yes-no", null);
-  setSignalClass(signalPutItm, "yes-no", null);
+  setSignalClass(signalCallExits, "call-yes", null);
+  setSignalClass(signalPutExits, "put-yes", null);
+  setSignalClass(signalCallItm, "call-yes", null);
+  setSignalClass(signalPutItm, "put-yes", null);
 }
 
-function renderSummaryRow(snapshot) {
-  if (!snapshot) {
-    summaryBody.innerHTML = '<tr><td colspan="9" class="placeholder">No snapshot data yet.</td></tr>';
+function clearSnapshotView() {
+  clearTimelineTable();
+  clearBoundaryPanels();
+}
+
+function getTrendClass(currentValue, previousValue, favorableDirection) {
+  const current = toNumber(currentValue);
+  const previous = toNumber(previousValue);
+
+  if (current === null || previous === null || current === previous) {
+    return "cell-trend-neutral";
+  }
+
+  const isIncrease = current > previous;
+  const favorable = favorableDirection === "up" ? isIncrease : !isIncrease;
+  return favorable ? "cell-trend-positive" : "cell-trend-negative";
+}
+
+function renderSnapshotTimeline(snapshots) {
+  if (!snapshots.length) {
+    clearTimelineTable();
     return;
   }
 
-  summaryBody.innerHTML = `
-    <tr>
-      <td>${snapshot.server_timestamp || "-"}</td>
-      <td>${formatValue(snapshot.underlying_value, 2)}</td>
-      <td>${formatValue(snapshot.call_sum, 1)}</td>
-      <td>${formatValue(snapshot.put_sum, 1)}</td>
-      <td>${formatValue(snapshot.difference, 1)}</td>
-      <td>${formatValue(snapshot.call_boundary, 1)}</td>
-      <td>${formatValue(snapshot.put_boundary, 1)}</td>
-      <td>${formatValue(snapshot.call_itm_ratio, 1)}</td>
-      <td>${formatValue(snapshot.put_itm_ratio, 1)}</td>
-    </tr>
-  `;
+  const rows = snapshots.map((snapshot, index) => {
+    const older = snapshots[index + 1] || null;
+    const rowClass = index === 0 ? "timeline-row-latest" : "";
+
+    return `
+      <tr class="${rowClass}">
+        <td>${snapshot.server_timestamp || "-"}</td>
+        <td class="${getTrendClass(snapshot.underlying_value, older?.underlying_value, "up")}">${formatValue(snapshot.underlying_value, 2)}</td>
+        <td class="${getTrendClass(snapshot.call_sum, older?.call_sum, "down")}">${formatValue(snapshot.call_sum, 1)}</td>
+        <td class="${getTrendClass(snapshot.put_sum, older?.put_sum, "up")}">${formatValue(snapshot.put_sum, 1)}</td>
+        <td class="${getTrendClass(snapshot.difference, older?.difference, "down")}">${formatValue(snapshot.difference, 1)}</td>
+        <td class="${getTrendClass(snapshot.call_boundary, older?.call_boundary, "down")}">${formatValue(snapshot.call_boundary, 1)}</td>
+        <td class="${getTrendClass(snapshot.put_boundary, older?.put_boundary, "up")}">${formatValue(snapshot.put_boundary, 1)}</td>
+        <td class="${getTrendClass(snapshot.call_itm_ratio, older?.call_itm_ratio, "up")}">${formatValue(snapshot.call_itm_ratio, 1)}</td>
+        <td class="${getTrendClass(snapshot.put_itm_ratio, older?.put_itm_ratio, "down")}">${formatValue(snapshot.put_itm_ratio, 1)}</td>
+      </tr>
+    `;
+  });
+
+  summaryBody.innerHTML = rows.join("");
 }
 
 function renderBoundaryPanels(snapshot) {
   if (!snapshot) {
-    clearSnapshotView();
+    clearBoundaryPanels();
     return;
   }
 
@@ -340,27 +380,28 @@ function renderBoundaryPanels(snapshot) {
 
   setSignalClass(signalOi, "oi", oiSignalValue);
   setSignalClass(signalPcr, "pcr", snapshot.put_call_ratio);
-  setSignalClass(signalCallExits, "yes-no", callExitsValue);
-  setSignalClass(signalPutExits, "yes-no", putExitsValue);
-  setSignalClass(signalCallItm, "yes-no", callItmValue);
-  setSignalClass(signalPutItm, "yes-no", putItmValue);
+  setSignalClass(signalCallExits, "call-yes", callExitsValue);
+  setSignalClass(signalPutExits, "put-yes", putExitsValue);
+  setSignalClass(signalCallItm, "call-yes", callItmValue);
+  setSignalClass(signalPutItm, "put-yes", putItmValue);
 }
 
-function renderSnapshot(snapshot) {
-  if (!snapshot) {
-    clearSnapshotView();
-    return;
+function renderSnapshotView() {
+  renderSnapshotTimeline(state.sessionSnapshots);
+  renderBoundaryPanels(state.latestSnapshot);
+}
+
+function resetSnapshotState(clearRunContext = true) {
+  state.latestSnapshot = null;
+  state.sessionSnapshots = [];
+
+  if (clearRunContext) {
+    state.activeRunStartedAt = null;
   }
 
-  renderSummaryRow(snapshot);
-  renderBoundaryPanels(snapshot);
-}
-
-function resetSnapshotState() {
-  state.latestSnapshot = null;
   syncResultsContext();
   if (!resultsView.classList.contains("hidden")) {
-    renderSnapshot(null);
+    renderSnapshotView();
   }
 }
 
@@ -381,6 +422,26 @@ async function loadExpiries() {
   populateSelect(expirySelect, data.expiry_dates || []);
 }
 
+function restartPolling() {
+  if (state.pollId !== null) {
+    window.clearInterval(state.pollId);
+    state.pollId = null;
+  }
+  startPolling();
+}
+
+function updatePollingDelay(status) {
+  const intervalSeconds = Number.parseInt(status?.config?.interval_seconds, 10);
+  const nextDelay = Number.isInteger(intervalSeconds) ? Math.max(intervalSeconds * 1000, 5000) : 9000;
+
+  if (nextDelay !== state.pollDelayMs) {
+    state.pollDelayMs = nextDelay;
+    if (state.pollId !== null) {
+      restartPolling();
+    }
+  }
+}
+
 async function refreshRunStatus() {
   const status = await apiRequest("/runs/status");
   statusRunning.textContent = status.running ? "Yes" : "No";
@@ -389,94 +450,51 @@ async function refreshRunStatus() {
   statusRuns.textContent = String(status.total_runs || 0);
   statusError.textContent = status.last_error || "-";
 
-  if (status.running) {
+  if (status.run_started_at) {
+    state.activeRunStartedAt = status.run_started_at;
+  }
+
+  updatePollingDelay(status);
+
+  const shouldPoll = status.running && !resultsView.classList.contains("hidden");
+  if (shouldPoll) {
     startPolling();
   } else {
     stopPolling();
   }
+
+  return status;
 }
 
-async function refreshLatestSnapshot() {
+async function refreshSessionTimeline() {
   const query = snapshotQueryString();
   if (!query) {
     state.latestSnapshot = null;
-    renderSnapshot(null);
+    state.sessionSnapshots = [];
+    renderSnapshotView();
     return;
   }
 
-  let latest = null;
+  const data = await apiRequest(`/snapshots/history?${query}`);
+  const items = Array.isArray(data.items) ? data.items : [];
+  const snapshots = items
+    .map((item) => normalizeSnapshot(item))
+    .filter((item) => item !== null)
+    .slice(0, SNAPSHOT_ROW_LIMIT);
 
-  try {
-    const raw = await apiRequest(`/snapshots/latest?${query}`);
-    latest = normalizeSnapshot(raw);
-  } catch (err) {
-    if (!String(err.message || "").includes("No snapshot found")) {
-      throw err;
-    }
-  }
-
-  if (latest) {
-    state.latestSnapshot = latest;
-  }
-
-  renderSnapshot(state.latestSnapshot);
+  state.sessionSnapshots = snapshots;
+  state.latestSnapshot = snapshots.length ? snapshots[0] : null;
+  renderSnapshotView();
 }
 
-async function openResultsView() {
+async function startLiveSession() {
   const payload = collectRunPayload();
   if (!hasValidContext(payload)) {
     showMessage("Please provide mode, symbol, expiry date, and strike price.", "error");
     return;
   }
 
-  showResultsView();
-  await refreshRunStatus();
-  await refreshLatestSnapshot();
-
-  if (!state.latestSnapshot) {
-    showMessage("No snapshot found yet. Use Analyze Once or Start Scheduled Run.", "info");
-  } else {
-    showMessage("Analyzer view ready.", "info");
-  }
-}
-
-async function analyzeOnce() {
-  const payload = collectRunPayload();
-  if (!hasValidContext(payload)) {
-    showMessage("Please provide mode, symbol, expiry date, and strike price.", "error");
-    return;
-  }
-
-  const requestBody = {
-    mode: payload.mode,
-    symbol: payload.symbol,
-    expiry_date: payload.expiry_date,
-    strike_price: payload.strike_price,
-  };
-
-  const data = await apiRequest(`/analyze?persist=${payload.persist ? "true" : "false"}`, {
-    method: "POST",
-    body: JSON.stringify(requestBody),
-  });
-
-  state.latestSnapshot = normalizeSnapshot(data.snapshot || data.analysis || null);
-  showResultsView();
-  renderSnapshot(state.latestSnapshot);
-  await refreshRunStatus();
-
-  if (payload.persist) {
-    await refreshLatestSnapshot();
-  }
-
-  showMessage("Analysis cycle completed.", "success");
-}
-
-async function startRun() {
-  const payload = collectRunPayload();
-  if (!hasValidContext(payload)) {
-    showMessage("Please provide mode, symbol, expiry date, and strike price.", "error");
-    return;
-  }
+  state.activeRunStartedAt = null;
 
   await apiRequest("/runs/start", {
     method: "POST",
@@ -485,27 +503,25 @@ async function startRun() {
 
   showResultsView();
   await refreshRunStatus();
-  await refreshLatestSnapshot();
-  showMessage("Scheduled run started.", "success");
-  startPolling();
+  await refreshSessionTimeline();
+
+  if (!state.latestSnapshot) {
+    showMessage("Scheduled run started. Waiting for first interval snapshot.", "info");
+  } else {
+    showMessage("Scheduled run started.", "success");
+  }
 }
 
 async function stopRun() {
   await apiRequest("/runs/stop", { method: "POST", body: "{}" });
   await refreshRunStatus();
+  await refreshSessionTimeline();
   showMessage("Scheduled run stopped.", "info");
-}
-
-async function triggerRunNow() {
-  await apiRequest("/runs/trigger", { method: "POST", body: "{}" });
-  await refreshRunStatus();
-  await refreshLatestSnapshot();
-  showMessage("Immediate cycle executed.", "success");
 }
 
 async function refreshResults() {
   await refreshRunStatus();
-  await refreshLatestSnapshot();
+  await refreshSessionTimeline();
   showMessage("Results refreshed.", "info");
 }
 
@@ -518,12 +534,12 @@ function startPolling() {
     try {
       await refreshRunStatus();
       if (!resultsView.classList.contains("hidden")) {
-        await refreshLatestSnapshot();
+        await refreshSessionTimeline();
       }
     } catch (err) {
       showMessage(err.message || "Polling error", "error");
     }
-  }, 9000);
+  }, state.pollDelayMs);
 }
 
 function stopPolling() {
@@ -561,6 +577,10 @@ function bindEvents() {
     resetSnapshotState();
   });
 
+  intervalSelect.addEventListener("change", () => {
+    syncResultsContext();
+  });
+
   loadSymbolsBtn.addEventListener("click", async () => {
     try {
       hideMessage();
@@ -587,14 +607,16 @@ function bindEvents() {
   openResultsBtn.addEventListener("click", async () => {
     try {
       hideMessage();
-      await openResultsView();
+      await startLiveSession();
     } catch (err) {
-      showMessage(err.message || "Failed to open results view", "error");
+      showMessage(err.message || "Failed to start live session", "error");
     }
   });
 
   backBtn.addEventListener("click", () => {
+    stopPolling();
     showConfigView();
+    resetSnapshotState();
     showMessage("Configuration view active.", "info");
   });
 
@@ -607,24 +629,6 @@ function bindEvents() {
     }
   });
 
-  analyzeBtn.addEventListener("click", async () => {
-    try {
-      hideMessage();
-      await analyzeOnce();
-    } catch (err) {
-      showMessage(err.message || "Analyze failed", "error");
-    }
-  });
-
-  startBtn.addEventListener("click", async () => {
-    try {
-      hideMessage();
-      await startRun();
-    } catch (err) {
-      showMessage(err.message || "Failed to start run", "error");
-    }
-  });
-
   stopBtn.addEventListener("click", async () => {
     try {
       hideMessage();
@@ -633,28 +637,19 @@ function bindEvents() {
       showMessage(err.message || "Failed to stop run", "error");
     }
   });
-
-  triggerBtn.addEventListener("click", async () => {
-    try {
-      hideMessage();
-      await triggerRunNow();
-    } catch (err) {
-      showMessage(err.message || "Trigger failed", "error");
-    }
-  });
 }
 
 async function initialize() {
   bindEvents();
   showConfigView();
-  renderSnapshot(null);
+  clearSnapshotView();
   syncResultsContext();
 
   try {
     await loadSymbols();
     await loadExpiries();
     await refreshRunStatus();
-    showMessage("Ready. Configure the run and open results view.", "info");
+    showMessage("Ready. Configure inputs and start live session.", "info");
   } catch (err) {
     showMessage(err.message || "Initialization failed", "error");
   }
