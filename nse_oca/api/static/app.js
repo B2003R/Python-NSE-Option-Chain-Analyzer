@@ -17,13 +17,14 @@ const refreshBtn = document.getElementById("refreshBtn");
 const stopBtn = document.getElementById("stopBtn");
 
 const messageBox = document.getElementById("messageBox");
+const configHint = document.getElementById("configHint");
 const resultsContext = document.getElementById("resultsContext");
 
 const statusRunning = document.getElementById("statusRunning");
 const statusNextRun = document.getElementById("statusNextRun");
 const statusLastRun = document.getElementById("statusLastRun");
 const statusRuns = document.getElementById("statusRuns");
-const statusError = document.getElementById("statusError");
+const statusSync = document.getElementById("statusSync");
 
 const summaryBody = document.getElementById("summaryBody");
 
@@ -56,11 +57,25 @@ const state = {
 };
 
 function showMessage(text, type = "info") {
+  if (configHint) {
+    configHint.textContent = text;
+    configHint.className = `config-hint ${type}`;
+  }
+  if (!messageBox) {
+    return;
+  }
   messageBox.textContent = text;
   messageBox.className = `message ${type}`;
 }
 
 function hideMessage() {
+  if (configHint) {
+    configHint.textContent = "";
+    configHint.className = "config-hint";
+  }
+  if (!messageBox) {
+    return;
+  }
   messageBox.textContent = "";
   messageBox.className = "message hidden";
 }
@@ -226,10 +241,37 @@ function syncResultsContext() {
 }
 
 function setText(node, value) {
+  if (!node) {
+    return;
+  }
   node.textContent = value;
 }
 
+function setSyncState(stateText, retrying = false) {
+  if (!statusSync) {
+    return;
+  }
+  statusSync.textContent = stateText;
+  statusSync.classList.remove("sync-ok", "sync-retrying");
+  if (stateText === "-") {
+    return;
+  }
+  statusSync.classList.add(retrying ? "sync-retrying" : "sync-ok");
+}
+
+function syncStartButtonState() {
+  if (!openResultsBtn) {
+    return;
+  }
+  const isValid = hasValidContext(collectRunPayload());
+  openResultsBtn.disabled = false;
+  openResultsBtn.title = isValid ? "" : "Select symbol, expiry, and strike price.";
+}
+
 function setSignalClass(node, kind, value) {
+  if (!node) {
+    return;
+  }
   node.classList.remove("signal-positive", "signal-negative", "signal-neutral");
 
   const normalized = String(value || "").trim().toLowerCase();
@@ -444,11 +486,11 @@ function updatePollingDelay(status) {
 
 async function refreshRunStatus() {
   const status = await apiRequest("/runs/status");
-  statusRunning.textContent = status.running ? "Yes" : "No";
-  statusNextRun.textContent = status.next_run_at || "-";
-  statusLastRun.textContent = status.last_run_at || "-";
-  statusRuns.textContent = String(status.total_runs || 0);
-  statusError.textContent = status.last_error || "-";
+  setText(statusRunning, status.running ? "Yes" : "No");
+  setText(statusNextRun, status.next_run_at || "-");
+  setText(statusLastRun, status.last_run_at || "-");
+  setText(statusRuns, String(status.total_runs || 0));
+  setSyncState("OK");
 
   if (status.run_started_at) {
     state.activeRunStartedAt = status.run_started_at;
@@ -488,9 +530,15 @@ async function refreshSessionTimeline() {
 }
 
 async function startLiveSession() {
-  const payload = collectRunPayload();
+  let payload = collectRunPayload();
+  if (!payload.expiry_date && payload.symbol) {
+    await loadExpiries();
+    payload = collectRunPayload();
+    syncStartButtonState();
+  }
+
   if (!hasValidContext(payload)) {
-    showMessage("Please provide mode, symbol, expiry date, and strike price.", "error");
+    showMessage("Please select symbol, expiry, and valid strike price before starting.", "error");
     return;
   }
 
@@ -537,7 +585,9 @@ function startPolling() {
         await refreshSessionTimeline();
       }
     } catch (err) {
-      showMessage(err.message || "Polling error", "error");
+      // Keep polling resilient without interrupting the dashboard with transient fetch errors.
+      setSyncState("Retrying", true);
+      console.debug("Polling error:", err);
     }
   }, state.pollDelayMs);
 }
@@ -555,6 +605,7 @@ function bindEvents() {
     try {
       await loadExpiries();
       resetSnapshotState();
+      syncStartButtonState();
     } catch (err) {
       showMessage(err.message || "Failed to switch mode", "error");
     }
@@ -564,6 +615,7 @@ function bindEvents() {
     try {
       await loadExpiries();
       resetSnapshotState();
+      syncStartButtonState();
     } catch (err) {
       showMessage(err.message || "Failed to load expiries", "error");
     }
@@ -571,10 +623,12 @@ function bindEvents() {
 
   expirySelect.addEventListener("change", () => {
     resetSnapshotState();
+    syncStartButtonState();
   });
 
   strikeInput.addEventListener("change", () => {
     resetSnapshotState();
+    syncStartButtonState();
   });
 
   intervalSelect.addEventListener("change", () => {
@@ -587,6 +641,7 @@ function bindEvents() {
       await loadSymbols();
       await loadExpiries();
       resetSnapshotState();
+      syncStartButtonState();
       showMessage("Symbols refreshed.", "success");
     } catch (err) {
       showMessage(err.message || "Failed to load symbols", "error");
@@ -598,6 +653,7 @@ function bindEvents() {
       hideMessage();
       await loadExpiries();
       resetSnapshotState();
+      syncStartButtonState();
       showMessage("Expiries refreshed.", "success");
     } catch (err) {
       showMessage(err.message || "Failed to load expiries", "error");
@@ -644,10 +700,13 @@ async function initialize() {
   showConfigView();
   clearSnapshotView();
   syncResultsContext();
+  syncStartButtonState();
+  setSyncState("-");
 
   try {
     await loadSymbols();
     await loadExpiries();
+    syncStartButtonState();
     await refreshRunStatus();
     showMessage("Ready. Configure inputs and start live session.", "info");
   } catch (err) {

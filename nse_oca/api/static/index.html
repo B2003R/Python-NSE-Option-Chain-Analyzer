@@ -20,8 +20,6 @@
       <p class="subtitle">Set mode, symbol, expiry date, strike, and interval to start a live session timeline.</p>
     </header>
 
-    <div id="messageBox" class="message hidden"></div>
-
     <section id="configView" class="view">
       <section class="card controls-card">
         <h2>Run Configuration</h2>
@@ -72,6 +70,7 @@
           <button id="loadExpiriesBtn" class="btn btn-secondary" type="button">Load Expiries</button>
           <button id="openResultsBtn" class="btn btn-primary" type="button">Start Live Session</button>
         </div>
+        <p id="configHint" class="config-hint">Select mode, symbol, expiry, and strike to start.</p>
       </section>
     </section>
 
@@ -87,9 +86,9 @@
             <span class="pill"><strong>Next:</strong> <span id="statusNextRun">-</span></span>
             <span class="pill"><strong>Last:</strong> <span id="statusLastRun">-</span></span>
             <span class="pill"><strong>Runs:</strong> <span id="statusRuns">0</span></span>
+            <span class="pill"><strong>Sync:</strong> <span id="statusSync">-</span></span>
           </div>
         </div>
-        <p class="status-error-line">Last Error: <span id="statusError">-</span></p>
 
         <div class="actions-grid results-actions-grid">
           <button id="backBtn" class="btn btn-secondary" type="button">Back</button>
@@ -196,6 +195,6 @@
     </section>
   </main>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=35e3f2-1"></script>
 </body>
 </html>

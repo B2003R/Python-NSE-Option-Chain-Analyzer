@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import desc, select
@@ -161,6 +161,8 @@ class SnapshotRepository:
         )
 
         if since_created_at is not None:
+            if since_created_at.tzinfo is not None:
+                since_created_at = since_created_at.astimezone(timezone.utc).replace(tzinfo=None)
             statement = statement.where(AnalysisSnapshotORM.created_at >= since_created_at)
 
         statement = statement.order_by(desc(AnalysisSnapshotORM.created_at)).limit(limit)

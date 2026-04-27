@@ -3,7 +3,7 @@ from typing import Any, cast
 
 from nse_oca.domain import BoundaryStrength, OptionMode
 from nse_oca.domain.models import AnalysisResult
-from nse_oca.worker.scheduler_service import AnalysisScheduler, ScheduledRunConfig
+from nse_oca.worker.scheduler_service import AnalysisScheduler, ScheduledRunConfig, SchedulerRunError
 
 
 class _FakeAnalysisService:
@@ -52,6 +52,34 @@ class SchedulerServiceTests(unittest.TestCase):
             self.assertIsNotNone(status["last_run_at"])
         finally:
             scheduler.stop_run()
+            scheduler.shutdown()
+
+    def test_start_run_raises_if_bootstrap_execution_fails(self) -> None:
+        class _FailingAnalysisService:
+            def analyze_once(self, _request):
+                raise RuntimeError("boom")
+
+        scheduler = AnalysisScheduler(cast(Any, _FailingAnalysisService()))
+        scheduler.start()
+        try:
+            with self.assertRaises(SchedulerRunError):
+                scheduler.start_run(
+                    ScheduledRunConfig(
+                        mode=OptionMode.INDEX,
+                        symbol="NIFTY",
+                        expiry_date="13-Apr-2026",
+                        strike_price=24000,
+                        interval_seconds=60,
+                        persist=False,
+                    )
+                )
+
+            status = scheduler.status()
+            self.assertFalse(status["running"])
+            self.assertIsNone(status["config"])
+            self.assertIsNotNone(status["last_error"])
+            self.assertEqual(status["total_runs"], 0)
+        finally:
             scheduler.shutdown()
 
 

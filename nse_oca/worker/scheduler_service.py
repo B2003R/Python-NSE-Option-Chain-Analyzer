@@ -15,6 +15,10 @@ from nse_oca.domain import OptionMode
 from nse_oca.persistence import SessionLocal, SnapshotRepository
 
 
+class SchedulerRunError(RuntimeError):
+    """Raised when an immediate scheduler execution fails during run start."""
+
+
 @dataclass(frozen=True)
 class ScheduledRunConfig:
     mode: OptionMode
@@ -71,7 +75,16 @@ class AnalysisScheduler:
         )
 
         # Run one cycle immediately so users see the live session start without waiting a full interval.
-        self._execute_job()
+        try:
+            self._execute_job(raise_on_error=True)
+        except SchedulerRunError:
+            # Keep scheduler state consistent if the bootstrap cycle fails.
+            if self.scheduler.get_job(self.JOB_ID):
+                self.scheduler.remove_job(self.JOB_ID)
+            with self.lock:
+                self.current_config = None
+                self.run_started_at = None
+            raise
 
         return self.status()
 
@@ -119,7 +132,7 @@ class AnalysisScheduler:
             else None,
         }
 
-    def _execute_job(self) -> None:
+    def _execute_job(self, raise_on_error: bool = False) -> None:
         with self.lock:
             config = self.current_config
 
@@ -160,3 +173,5 @@ class AnalysisScheduler:
             with self.lock:
                 self.last_run_at = datetime.now(tz=timezone.utc)
                 self.last_error = str(err)
+            if raise_on_error:
+                raise SchedulerRunError(str(err)) from err

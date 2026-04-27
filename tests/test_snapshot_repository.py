@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -105,6 +105,43 @@ class SnapshotRepositoryTests(unittest.TestCase):
                 expiry_date="10-Apr-2026",
                 strike_price=120,
                 since_created_at=datetime(2026, 4, 6, 10, 4, 0),
+                limit=20,
+            )
+
+            self.assertEqual(len(history), 1)
+            self.assertEqual(history[0]["id"], second["id"])
+        finally:
+            session.close()
+
+    def test_history_filter_accepts_timezone_aware_datetime(self) -> None:
+        session = self.Session()
+        try:
+            repository = SnapshotRepository(session)
+            request = AnalysisInput(
+                mode=OptionMode.INDEX,
+                symbol="NIFTY",
+                expiry_date="10-Apr-2026",
+                strike_price=120,
+            )
+
+            first = repository.save_analysis(request=request, analysis=self._build_analysis("06-Apr-2026 10:00:00"))
+            second = repository.save_analysis(request=request, analysis=self._build_analysis("06-Apr-2026 10:01:00"))
+
+            first_row = session.get(AnalysisSnapshotORM, first["id"])
+            second_row = session.get(AnalysisSnapshotORM, second["id"])
+            self.assertIsNotNone(first_row)
+            self.assertIsNotNone(second_row)
+
+            first_row.created_at = datetime(2026, 4, 6, 10, 0, 0)
+            second_row.created_at = datetime(2026, 4, 6, 10, 5, 0)
+            session.commit()
+
+            history = repository.get_history(
+                mode="Index",
+                symbol="NIFTY",
+                expiry_date="10-Apr-2026",
+                strike_price=120,
+                since_created_at=datetime(2026, 4, 6, 10, 4, 0, tzinfo=timezone.utc),
                 limit=20,
             )
 

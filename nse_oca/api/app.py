@@ -14,7 +14,7 @@ from nse_oca.application import AnalysisInput, AnalysisService, AnalysisServiceE
 from nse_oca.domain import OptionMode
 from nse_oca.infrastructure import NseApiClient
 from nse_oca.persistence import SettingRepository, SnapshotRepository, get_session, init_db
-from nse_oca.worker import AnalysisScheduler, ScheduledRunConfig
+from nse_oca.worker import AnalysisScheduler, ScheduledRunConfig, SchedulerRunError
 
 app = FastAPI(
     title="NSE Option Chain Analyzer API",
@@ -153,8 +153,10 @@ def start_run(request: RunStartRequest) -> Dict[str, Any]:
             setting_repository.upsert_setting("run.strike_price", str(request.strike_price))
             setting_repository.upsert_setting("run.interval_seconds", str(request.interval_seconds))
             setting_repository.upsert_setting("run.persist", str(request.persist))
-    except (ValueError, AnalysisServiceError) as err:
+    except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
+    except SchedulerRunError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
 
     return status
 

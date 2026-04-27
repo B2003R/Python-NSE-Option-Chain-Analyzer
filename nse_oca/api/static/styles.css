@@ -226,6 +226,24 @@ input {
   gap: 0.85rem;
 }
 
+.config-hint {
+  margin: 0.65rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.config-hint.info {
+  color: var(--muted);
+}
+
+.config-hint.success {
+  color: #1f6649;
+}
+
+.config-hint.error {
+  color: #8b1d1d;
+}
+
 .results-head {
   display: flex;
   align-items: flex-start;
@@ -264,6 +282,14 @@ input {
 .pill strong {
   font-family: var(--sans);
   font-size: 0.74rem;
+}
+
+#statusSync.sync-ok {
+  color: #1f6649;
+}
+
+#statusSync.sync-retrying {
+  color: #9f2424;
 }
 
 .status-error-line {
